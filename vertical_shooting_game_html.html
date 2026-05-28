@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ゲーム開発部の冒険</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+      font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    canvas {
+      border: 2px solid #555;
+      background: #020617;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // =====================
+    // ゲーム状態
+    // =====================
+    // title  : タイトル画面
+    // select : キャラ選択画面
+    // game   : ゲーム中
+    // over   : ゲームオーバー
+    let gameState = "title";
+    let selectedCharacter = "midori";
+
+    // =====================
+    // 画像読み込み
+    // =====================
+    const titleImg = new Image();
+    titleImg.src = "images/title_screen.png";
+
+    const backgroundImg = new Image();
+    backgroundImg.src = "images/background_lab.png";
+
+    let bgY = 0;
+    const bgSpeed = 2;
+
+    const playerImages = {
+      midori: {
+        normal: new Image(),
+        shoot: new Image(),
+        stand: new Image()
+      },
+      momoi: {
+        normal: new Image(),
+        shoot: new Image(),
+        stand: new Image()
+      }
+    };
+
+    playerImages.midori.normal.src = "images/midori2.png";
+    playerImages.midori.shoot.src = "images/midori1.png";
+    playerImages.midori.stand.src = "images/midori3.png";
+
+    playerImages.momoi.normal.src = "images/momoi2.png";
+    playerImages.momoi.shoot.src = "images/momoi1.png";
+    playerImages.momoi.stand.src = "images/momoi3.png";
+
+    const enemyImages = {
+      yellow: [new Image(), new Image()],
+      black: [new Image(), new Image()],
+      white: [new Image(), new Image()]
+    };
+
+    enemyImages.yellow[0].src = "images/enemy_yellow_1.png";
+    enemyImages.yellow[1].src = "images/enemy_yellow_2.png";
+    enemyImages.black[0].src = "images/enemy_black_1.png";
+    enemyImages.black[1].src = "images/enemy_black_2.png";
+    enemyImages.white[0].src = "images/enemy_white_1.png";
+    enemyImages.white[1].src = "images/enemy_white_2.png";
+
+    const enemyTypes = ["yellow", "black", "white"];
+
+    const enemyStatus = {
+      white: { hp: 1, score: 10 },
+      yellow: { hp: 2, score: 20 },
+      black: { hp: 3, score: 30 }
+    };
+
+    const playerStatus = {
+      midori: {
+        name: "MIDORI",
+        jpName: "ミドリ",
+        attack: 2,
+        shotType: "single",
+        description: "高火力の単発ショット"
+      },
+      momoi: {
+        name: "MOMOI",
+        jpName: "モモイ",
+        attack: 1,
+        shotType: "spread",
+        description: "広範囲の散弾ショット"
+      }
+    };
+
+    const player = {
+      x: canvas.width / 2 - 40,
+      y: canvas.height - 140,
+      width: 80,
+      height: 120,
+      speed: 5
+    };
+
+    const keys = {};
+    const bullets = [];
+    const enemies = [];
+
+    let score = 0;
+    let enemyTimer = 0;
+    let shootAnimation = 0;
+
+    document.addEventListener("keydown", (e) => {
+      keys[e.code] = true;
+
+      if (gameState === "title" && e.code === "Enter") {
+        gameState = "select";
+        return;
+      }
+
+      if (gameState === "select") {
+        if (e.code === "ArrowLeft" || e.code === "KeyA") {
+          selectedCharacter = "midori";
+        }
+        if (e.code === "ArrowRight" || e.code === "KeyD") {
+          selectedCharacter = "momoi";
+        }
+        if (e.code === "Enter" || e.code === "Space") {
+          startGame();
+        }
+        return;
+      }
+
+      if (gameState === "game" && e.code === "Space") {
+        shootBullet();
+      }
+
+      if (gameState === "over" && e.code === "Enter") {
+        gameState = "title";
+      }
+    });
+
+    document.addEventListener("keyup", (e) => {
+      keys[e.code] = false;
+    });
+
+    canvas.addEventListener("click", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      if (gameState === "title") {
+        if (mouseX >= 80 && mouseX <= 320 && mouseY >= 390 && mouseY <= 470) {
+          gameState = "select";
+        }
+        return;
+      }
+
+      if (gameState === "select") {
+        if (mouseX >= 25 && mouseX <= 185 && mouseY >= 120 && mouseY <= 470) {
+          selectedCharacter = "midori";
+        }
+        if (mouseX >= 215 && mouseX <= 375 && mouseY >= 120 && mouseY <= 470) {
+          selectedCharacter = "momoi";
+        }
+        if (mouseX >= 110 && mouseX <= 290 && mouseY >= 515 && mouseY <= 570) {
+          startGame();
+        }
+      }
+    });
+
+    function startGame() {
+      player.x = canvas.width / 2 - 40;
+      player.y = canvas.height - 140;
+      bullets.length = 0;
+      enemies.length = 0;
+      score = 0;
+      enemyTimer = 0;
+      shootAnimation = 0;
+      bgY = 0;
+      gameState = "game";
+    }
+
+    function updateBackground() {
+      bgY += bgSpeed;
+      if (bgY >= canvas.height) bgY = 0;
+    }
+
+    function drawBackground() {
+      ctx.drawImage(backgroundImg, 0, bgY, canvas.width, canvas.height);
+      ctx.drawImage(backgroundImg, 0, bgY - canvas.height, canvas.width, canvas.height);
+    }
+
+    function drawTitle() {
+      if (titleImg.complete) {
+        ctx.drawImage(titleImg, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = "#020617";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#67e8f9";
+      ctx.font = "bold 34px sans-serif";
+      ctx.fillText("ゲーム開発部の冒険", canvas.width / 2, 130);
+
+      ctx.fillStyle = "#facc15";
+      ctx.font = "18px sans-serif";
+      ctx.fillText("シューティングゲーム", canvas.width / 2, 170);
+
+      drawButton(80, 390, 240, 70, "GAME START", "#06b6d4");
+
+      ctx.fillStyle = "white";
+      ctx.font = "16px sans-serif";
+      ctx.fillText("PRESS ENTER", canvas.width / 2, 500);
+      ctx.textAlign = "left";
+    }
+
+    function drawCharacterSelect() {
+      ctx.fillStyle = "#020617";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      drawBackground();
+
+      ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 26px sans-serif";
+      ctx.fillText("キャラクター選択", canvas.width / 2, 55);
+
+      drawCharacterCard("midori", 25, 100, 160, 380, "#22c55e");
+      drawCharacterCard("momoi", 215, 100, 160, 380, "#ec4899");
+
+      drawButton(110, 515, 180, 50, "決定", "#06b6d4");
+
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "13px sans-serif";
+      ctx.fillText("← → で選択 / Enterで決定", canvas.width / 2, 590);
+      ctx.textAlign = "left";
+    }
+
+    function drawCharacterCard(type, x, y, w, h, color) {
+      const isSelected = selectedCharacter === type;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+      ctx.fillRect(x, y, w, h);
+
+      ctx.strokeStyle = isSelected ? color : "#475569";
+      ctx.lineWidth = isSelected ? 4 : 2;
+      ctx.strokeRect(x, y, w, h);
+
+      const img = playerImages[type].stand;
+      ctx.drawImage(img, x + 35, y + 25, 90, 180);
+
+      ctx.fillStyle = color;
+      ctx.font = "bold 22px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(playerStatus[type].name, x + w / 2, y + 235);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "14px sans-serif";
+      ctx.fillText(playerStatus[type].jpName, x + w / 2, y + 262);
+
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "13px sans-serif";
+      ctx.fillText(playerStatus[type].description, x + w / 2, y + 300);
+
+      ctx.fillStyle = "#facc15";
+      ctx.fillText("攻撃力: " + playerStatus[type].attack, x + w / 2, y + 330);
+
+      if (isSelected) {
+        ctx.fillStyle = color;
+        ctx.font = "bold 16px sans-serif";
+        ctx.fillText("SELECT", x + w / 2, y + 365);
+      }
+    }
+
+    function drawButton(x, y, w, h, text, color) {
+      ctx.fillStyle = "rgba(2, 6, 23, 0.9)";
+      ctx.fillRect(x, y, w, h);
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x, y, w, h);
+
+      ctx.fillStyle = color;
+      ctx.font = "bold 26px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(text, x + w / 2, y + h / 2 + 9);
+    }
+
+    function shootBullet() {
+      const status = playerStatus[selectedCharacter];
+
+      if (status.shotType === "single") {
+        createBullet(0);
+      }
+
+      if (status.shotType === "spread") {
+        createBullet(-2.5);
+        createBullet(0);
+        createBullet(2.5);
+      }
+
+      shootAnimation = 6;
+    }
+
+    function createBullet(angleX) {
+      const bulletWidth = 6;
+      const bulletHeight = 14;
+      const status = playerStatus[selectedCharacter];
+
+      bullets.push({
+        x: player.x + player.width / 2 - bulletWidth / 2,
+        y: player.y,
+        width: bulletWidth,
+        height: bulletHeight,
+        speed: 8,
+        vx: angleX,
+        attack: status.attack
+      });
+    }
+
+    function createEnemy() {
+      const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+      const enemyWidth = 54;
+      const enemyHeight = 54;
+
+      enemies.push({
+        type,
+        x: Math.random() * (canvas.width - enemyWidth),
+        y: -enemyHeight,
+        width: enemyWidth,
+        height: enemyHeight,
+        speed: 1.8 + Math.random() * 1.6,
+        hp: enemyStatus[type].hp,
+        maxHp: enemyStatus[type].hp,
+        score: enemyStatus[type].score,
+        animationTimer: 0,
+        frame: 0
+      });
+    }
+
+    function updatePlayer() {
+      if (keys["ArrowLeft"] || keys["KeyA"]) player.x -= player.speed;
+      if (keys["ArrowRight"] || keys["KeyD"]) player.x += player.speed;
+      if (keys["ArrowUp"] || keys["KeyW"]) player.y -= player.speed;
+      if (keys["ArrowDown"] || keys["KeyS"]) player.y += player.speed;
+
+      player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+      player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+    }
+
+    function updateBullets() {
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        bullets[i].x += bullets[i].vx;
+        bullets[i].y -= bullets[i].speed;
+
+        if (bullets[i].y + bullets[i].height < 0 || bullets[i].x + bullets[i].width < 0 || bullets[i].x > canvas.width) {
+          bullets.splice(i, 1);
+        }
+      }
+    }
+
+    function updateEnemies() {
+      enemyTimer++;
+      if (enemyTimer > 45) {
+        createEnemy();
+        enemyTimer = 0;
+      }
+
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const enemy = enemies[i];
+        enemy.y += enemy.speed;
+
+        enemy.animationTimer++;
+        if (enemy.animationTimer > 10) {
+          enemy.frame = enemy.frame === 0 ? 1 : 0;
+          enemy.animationTimer = 0;
+        }
+
+        if (enemy.y > canvas.height) {
+          enemies.splice(i, 1);
+        }
+      }
+    }
+
+    function updateShootAnimation() {
+      if (shootAnimation > 0) shootAnimation--;
+    }
+
+    function isHit(a, b) {
+      return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    }
+
+    function checkCollisions() {
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        if (isHit(player, enemies[i])) {
+          gameState = "over";
+        }
+
+        for (let j = bullets.length - 1; j >= 0; j--) {
+          if (isHit(bullets[j], enemies[i])) {
+            enemies[i].hp -= bullets[j].attack;
+            bullets.splice(j, 1);
+
+            if (enemies[i].hp <= 0) {
+              score += enemies[i].score;
+              enemies.splice(i, 1);
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    function drawPlayer() {
+      const img = shootAnimation > 0 ? playerImages[selectedCharacter].shoot : playerImages[selectedCharacter].normal;
+      ctx.drawImage(img, player.x, player.y, player.width, player.height);
+    }
+
+    function drawBullets() {
+      ctx.shadowColor = selectedCharacter === "midori" ? "#39ff14" : "#ff7ac8";
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = selectedCharacter === "midori" ? "#39ff14" : "#ff7ac8";
+
+      bullets.forEach((bullet) => {
+        ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+      });
+
+      ctx.shadowBlur = 0;
+    }
+
+    function drawEnemies() {
+      enemies.forEach((enemy) => {
+        const img = enemyImages[enemy.type][enemy.frame];
+        ctx.drawImage(img, enemy.x, enemy.y, enemy.width, enemy.height);
+        drawEnemyHpBar(enemy);
+      });
+    }
+
+    function drawEnemyHpBar(enemy) {
+      const hpRate = enemy.hp / enemy.maxHp;
+      ctx.fillStyle = "#111827";
+      ctx.fillRect(enemy.x, enemy.y - 8, enemy.width, 5);
+      ctx.fillStyle = "#22c55e";
+      ctx.fillRect(enemy.x, enemy.y - 8, enemy.width * hpRate, 5);
+    }
+
+    function drawScore() {
+      ctx.fillStyle = "white";
+      ctx.font = "20px sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("SCORE: " + score, 10, 30);
+      ctx.fillText("PLAYER: " + playerStatus[selectedCharacter].name, 10, 55);
+    }
+
+    function drawGameOver() {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = "white";
+      ctx.font = "36px sans-serif";
+      ctx.fillText("GAME OVER", canvas.width / 2, 270);
+
+      ctx.font = "18px sans-serif";
+      ctx.fillText("Enterキーでタイトルへ", canvas.width / 2, 315);
+      ctx.textAlign = "left";
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (gameState === "title") {
+        drawTitle();
+      }
+
+      if (gameState === "select") {
+        updateBackground();
+        drawCharacterSelect();
+      }
+
+      if (gameState === "game") {
+        updateBackground();
+        updatePlayer();
+        updateBullets();
+        updateEnemies();
+        updateShootAnimation();
+        checkCollisions();
+
+        drawBackground();
+        drawPlayer();
+        drawBullets();
+        drawEnemies();
+        drawScore();
+      }
+
+      if (gameState === "over") {
+        drawBackground();
+        drawPlayer();
+        drawBullets();
+        drawEnemies();
+        drawScore();
+        drawGameOver();
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    gameLoop();
+  </script>
+</body>
+</html>
