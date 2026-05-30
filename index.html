@@ -38,6 +38,9 @@ const ctx = canvas.getContext("2d");
 let gameState = "title";
 let selectedCharacter = "midori";
 
+let menuBgmStarted = false;
+
+
 // =====================
 // タイトル・背景
 // =====================
@@ -111,6 +114,27 @@ bossImages.shoot.src = "images/yuuka1.png";   // 射撃
 bossImages.move.src = "images/yuuka2.png";    // 移動
 bossImages.stand.src = "images/yuuka3.png";   // 停止
 bossImages.tackle.src = "images/yuuka4.png";  // タックル
+
+// =====================
+// サウンド
+// =====================
+
+const bgmMenu = new Audio("audio/bgm_menu.mp3");
+const bgmStage = new Audio("audio/bgm_stage.mp3");
+
+const seCursor = new Audio("audio/se_cursor.mp3");
+const seDecide = new Audio("audio/se_decide.mp3");
+const seShot = new Audio("audio/se_shot.mp3");
+
+bgmMenu.loop = true;
+bgmStage.loop = true;
+
+bgmMenu.volume = 0.4;
+bgmStage.volume = 0.4;
+
+seCursor.volume = 0.7;
+seDecide.volume = 0.7;
+seShot.volume = 0.5;
 
 // =====================
 // 敵設定
@@ -215,6 +239,9 @@ document.addEventListener("keydown", (e) => {
   keys[e.code] = true;
 
   if (gameState === "title" && e.code === "Enter") {
+    bgmMenu.currentTime = 0;
+    bgmMenu.play();
+
     gameState = "select";
     return;
   }
@@ -222,6 +249,9 @@ document.addEventListener("keydown", (e) => {
   if (gameState === "select") {
     if (e.code === "ArrowLeft" || e.code === "KeyA") {
       selectedCharacter = "midori";
+
+      seCursor.currentTime = 0;
+      seCursor.play();
     }
 
     if (e.code === "ArrowRight" || e.code === "KeyD") {
@@ -229,6 +259,10 @@ document.addEventListener("keydown", (e) => {
     }
 
     if (e.code === "Enter" || e.code === "Space") {
+
+      seDecide.currentTime = 0;
+      seDecide.play();
+
       startGame();
     }
 
@@ -240,8 +274,14 @@ document.addEventListener("keydown", (e) => {
   }
 
   if (gameState === "over" && e.code === "Enter") {
-    gameState = "title";
-  }
+  bgmStage.pause();
+  bgmStage.currentTime = 0;
+
+  bgmMenu.currentTime = 0;
+  bgmMenu.play();
+
+  gameState = "title";
+}
 });
 
 document.addEventListener("keyup", (e) => {
@@ -270,6 +310,14 @@ function startGame() {
   bgY = 0;
   gameTime = 0;
   difficulty = 1;
+
+  bgmMenu.pause();
+  bgmMenu.currentTime = 0;
+
+  bgmStage.loop = true;
+  bgmStage.volume = 0.4;
+  bgmStage.currentTime = 0;
+  bgmStage.play();
 
   gameState = "game";
 }
@@ -304,6 +352,10 @@ function drawBackground() {
 // =====================
 
 function shootBullet() {
+
+  seShot.currentTime = 0;
+  seShot.play();
+
   const status = playerStatus[selectedCharacter];
 
   if (status.shotType === "single") {
@@ -398,10 +450,11 @@ function updateEnemies() {
 // =====================
 
 function createBoss() {
+  enemies.length = 0;
+
   boss = {
     x: canvas.width / 2 - 60,
     y: 40,
-
     width: 120,
     height: 150,
 
@@ -426,8 +479,8 @@ function updateBoss() {
 
   // 20秒後にボス登場
   if (!boss && bossTimer > 60 * 20) {
-    createBoss();
-  }
+  createBoss();
+}
 
   if (!boss) return;
 
@@ -657,7 +710,8 @@ function checkCollisions() {
           score += 1000;
           boss = null;
           bossBullets.length = 0;
-        }
+          bossTimer = 0;
+         }
 
         break;
       }
@@ -957,7 +1011,8 @@ function gameLoop() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (gameState === "title") {
-    drawTitle();
+
+  drawTitle();
   }
 
   if (gameState === "select") {
